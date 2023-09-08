@@ -35,6 +35,7 @@ using System.Xml;
 using System.Net;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Security.Principal;
 
 namespace CitrusUpdater
 {
@@ -115,7 +116,8 @@ namespace CitrusUpdater
             {
                 radioButton_OnLoad.IsChecked = true;
             }
-            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Contains("Revit"));
+            
+            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Equals("Revit"));
             if(process == null)
             {
                 CheckForUpdates();
@@ -161,19 +163,6 @@ namespace CitrusUpdater
             // Отменяем закрытие приложения
             e.Cancel = true;
         }
-
-        //Заменить на добавление записи через установщик
-        //private void CitrusUpdaterWPF_SourceInitialized(object sender, EventArgs e)
-        //{
-        //    // Получаем дескриптор окна приложения
-        //    IntPtr handle = new WindowInteropHelper(this).Handle;
-
-        //    // Получаем путь к файлу приложения
-        //    string path = System.Reflection.Assembly.GetExecutingAssembly().Location;
-
-        //    // Добавляем приложение в автозапуск Windows
-        //    Microsoft.Win32.Registry.SetValue("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "CitrusUpdater", path);
-        //}
         private void MenuItem_Open_Click(object sender, RoutedEventArgs e)
         {
             // Показываем главное окно приложения
@@ -250,7 +239,7 @@ namespace CitrusUpdater
         {
             timer.Stop();
             timer = new Forms.Timer();
-            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Contains("Revit"));
+            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Equals("Revit"));
             if (process == null)
             {
                 CheckForUpdates();
@@ -273,7 +262,10 @@ namespace CitrusUpdater
 
             if (CheckURL(addinsDataURLString))
             {
-                string username = Environment.UserName;
+                WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
+                string fullUserName = currentIdentity.Name;
+                string[] parts = fullUserName.Split('\\');
+                string username = (parts.Length > 1) ? parts[1] : fullUserName;
                 XmlDocument addinsDataXML = new XmlDocument();
                 addinsDataXML.Load(addinsDataURLString);
 
