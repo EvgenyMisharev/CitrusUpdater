@@ -122,6 +122,11 @@ namespace CitrusUpdater
             {
                 CheckForUpdates();
             }
+            else
+            {
+                textBox_Info.Clear();
+                textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
+            }
 
             timer = new Forms.Timer();
             if (updateCheckButtonName != null)
@@ -244,6 +249,12 @@ namespace CitrusUpdater
             {
                 CheckForUpdates();
             }
+            else
+            {
+                textBox_Info.Clear();
+                textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
+            }
+
             if (updateCheckButtonName == "radioButton_EachTenMinutes")
             {
                 timer.Interval = 10 * 10 * 1000;
@@ -262,10 +273,14 @@ namespace CitrusUpdater
 
             if (CheckURL(addinsDataURLString))
             {
-                WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
-                string fullUserName = currentIdentity.Name;
-                string[] parts = fullUserName.Split('\\');
-                string username = (parts.Length > 1) ? parts[1] : fullUserName;
+                //WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
+                //string fullUserName = currentIdentity.Name;
+                //string[] parts = fullUserName.Split('\\');
+                //string username = (parts.Length > 1) ? parts[1] : fullUserName;
+                string userProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string[] pathComponents = userProfilePath.Split('\\');
+                string username = pathComponents[pathComponents.Length - 1];
+                //string username = Environment.UserName;
                 XmlDocument addinsDataXML = new XmlDocument();
                 addinsDataXML.Load(addinsDataURLString);
 
@@ -433,7 +448,8 @@ namespace CitrusUpdater
                         else if (File.Exists(targetPath))
                         {
                             DateTime createDateTime = new FileInfo(targetPath).CreationTime;
-                            if (lastModifiedDateTime > createDateTime)
+                            DateTime changeDateTime = new FileInfo(targetPath).LastWriteTime;
+                            if (lastModifiedDateTime > createDateTime && lastModifiedDateTime > changeDateTime)
                             {
                                 using (WebClient client = new WebClient())
                                 {

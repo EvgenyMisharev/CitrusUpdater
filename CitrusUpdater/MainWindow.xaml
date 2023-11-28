@@ -11,13 +11,18 @@
         Loaded="CitrusUpdaterWPF_Loaded" Closing="CitrusUpdaterWPF_Closed">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="100"/>
+            <RowDefinition Height="80"/>
             <RowDefinition Height="150"/>
             <RowDefinition Height="200*"/>
         </Grid.RowDefinitions>
-        <Image x:Name="image_CitrusLogo" HorizontalAlignment="Center" Height="85" VerticalAlignment="Center" Width="180" Source="Resources/Citrus.png" Margin="0" MouseLeftButtonUp="image_CitrusLogo_MouseLeftButtonUp"/>
-        
-        <GroupBox x:Name="groupBox_UpdateCheck" Header="Проверять обновления:" Grid.Row="1" Margin="10" Grid.ColumnSpan="2">
+        <Image x:Name="image_CitrusLogo" HorizontalAlignment="Center" Height="72" 
+               VerticalAlignment="Center" Width="180" 
+               Source="Resources/Citrus.png" Margin="0" 
+               MouseLeftButtonUp="image_CitrusLogo_MouseLeftButtonUp" 
+               RenderOptions.BitmapScalingMode="HighQuality" 
+               RenderOptions.EdgeMode="Aliased"/>
+
+        <GroupBox x:Name="groupBox_UpdateCheck" Header="Проверять обновления:" Grid.Row="1" Margin="10,5" Grid.ColumnSpan="2" VerticalAlignment="Center">
             <Grid Margin="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="107*"/>
@@ -34,7 +39,7 @@
             </Grid>
         </GroupBox>
 
-        <TextBox x:Name="textBox_Info" Margin="10,20" Grid.Row="2" TextWrapping="Wrap" IsReadOnly="True"/>
+        <TextBox x:Name="textBox_Info" Margin="10,5,10,10" Grid.Row="2" TextWrapping="Wrap" IsReadOnly="True"/>
     </Grid>
 </Window>
     
