@@ -1,26 +1,4 @@
-﻿/*
- * Copyright (c) <2023> <Misharev Evgeny>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
- * 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer 
- *    in the documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the <organization> nor the names of its contributors may be used to endorse or promote products derived 
- *    from this software without specific prior written permission.
- * 4. Redistributions are not allowed to be sold, in whole or in part, for any compensation of any kind.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, 
- * BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
- * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, 
- * OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; 
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Contact: <citrusbim@gmail.com> or <https://web.telegram.org/k/#@MisharevEvgeny>
- */
-
-using Hardcodet.Wpf.TaskbarNotification;
+﻿using Hardcodet.Wpf.TaskbarNotification;
 using System;
 using System.IO;
 using System.Linq;
@@ -35,7 +13,6 @@ using System.Xml;
 using System.Net;
 using System.Threading.Tasks;
 using System.Diagnostics;
-using System.Security.Principal;
 
 namespace CitrusUpdater
 {
@@ -44,9 +21,12 @@ namespace CitrusUpdater
         private TaskbarIcon notifyIcon;
         private string updateCheckButtonName;
         public Forms.Timer timer;
+        private string lastSuccessfulChange;
+        private const string ChangeHistoryFileName = "changelog.xml";
+        private const string LastChangeFileName = "LastChange.txt";
 
         public static Dictionary<string, bool> RunCreateFoldersVersions;
-        public static Dictionary<string,bool> RunDownloadFilesVersions;
+        public static Dictionary<string, bool> RunDownloadFilesVersions;
 
         public MainWindow()
         {
@@ -54,233 +34,375 @@ namespace CitrusUpdater
             RunDownloadFilesVersions = new Dictionary<string, bool>();
             InitializeComponent();
         }
-        private void CitrusUpdaterWPF_Loaded(object sender, RoutedEventArgs e)
+
+        private async void CitrusUpdaterWPF_Loaded(object sender, RoutedEventArgs e)
         {
-            // Показываем главное окно приложения
-            Rect trayRect = SystemParameters.WorkArea;
-            double left = trayRect.Right - this.Width;
-            double top = trayRect.Bottom - this.Height;
+            ConfigureTrayIcon();
+            HideMainWindow();
 
-            this.Topmost = true;
-            this.Left = left;
-            this.Top = top;
-            this.Width = this.Width;
-            this.Height = this.Height;
+            // Load settings
+            LoadSettings();
+            LoadLastSuccessfulChange();
+            LoadChangeHistory();
 
-            // Скрываем главное окно приложения
-            this.Hide();
+            // Start the timer based on settings
+            StartUpdateTimer();
 
-            // Создаем иконку в трее
-            this.notifyIcon = new TaskbarIcon();
-            this.notifyIcon.IconSource = new BitmapImage(new Uri("pack://application:,,,/Resources/citrus.ico"));
-            this.notifyIcon.ToolTipText = "CITRUS для Revit";
-
-            this.notifyIcon.ContextMenu = new System.Windows.Controls.ContextMenu();
-            MenuItem mi_Open = new MenuItem();
-            mi_Open.Header = "Открыть";
-            mi_Open.Click += MenuItem_Open_Click;
-            this.notifyIcon.ContextMenu.Items.Add(mi_Open);
-
-            MenuItem mi_Exit = new MenuItem();
-            mi_Exit.Header = "Выход";
-            mi_Exit.Click += MenuItem_Exit_Click;
-            this.notifyIcon.ContextMenu.Items.Add(mi_Exit);
-
-            // Добавляем обработчик клика по иконке
-            this.notifyIcon.TrayMouseDoubleClick += notifyIcon_TrayMouseDoubleClick;
-
-            //Проверка сохраненныъ настроек
-            string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string fileName = "CitrusUpdaterSettings.xml";
-            string assemblyPath = assemblyPathAll.Replace("CitrusUpdater.exe", fileName);
-
-            if (File.Exists(assemblyPath))
+            // Check for updates if Revit is not running
+            if (!IsRevitRunning())
             {
-                using (FileStream fs = new FileStream(assemblyPath, FileMode.Open))
+                await CheckForUpdates();
+            }
+            else
+            {
+                ShowRevitRunningMessage();
+            }
+        }
+
+        private void ConfigureTrayIcon()
+        {
+            // Setup tray icon
+            this.notifyIcon = new TaskbarIcon
+            {
+                IconSource = new BitmapImage(new Uri("pack://application:,,,/Resources/citrus.ico")),
+                ToolTipText = "CITRUS для Revit"
+            };
+
+            // Setup context menu
+            var contextMenu = new ContextMenu();
+            var mi_Open = new MenuItem { Header = "Открыть" };
+            mi_Open.Click += MenuItem_Open_Click;
+            contextMenu.Items.Add(mi_Open);
+
+            var mi_Exit = new MenuItem { Header = "Выход" };
+            mi_Exit.Click += MenuItem_Exit_Click;
+            contextMenu.Items.Add(mi_Exit);
+
+            this.notifyIcon.ContextMenu = contextMenu;
+            this.notifyIcon.TrayMouseDoubleClick += notifyIcon_TrayMouseDoubleClick;
+        }
+
+        private void HideMainWindow()
+        {
+            this.Topmost = true;
+            this.Left = SystemParameters.WorkArea.Right - this.Width;
+            this.Top = SystemParameters.WorkArea.Bottom - this.Height;
+            this.Hide();
+        }
+
+        private void LoadSettings()
+        {
+            string settingsFilePath = GetSettingsFilePath();
+            if (File.Exists(settingsFilePath))
+            {
+                using (FileStream fs = new FileStream(settingsFilePath, FileMode.Open))
                 {
                     XmlSerializer xSer = new XmlSerializer(typeof(string));
                     updateCheckButtonName = xSer.Deserialize(fs) as string;
-                    fs.Close();
                 }
-            }
 
-            if (updateCheckButtonName == "radioButton_EachTenMinutes")
-            {
-                radioButton_EachTenMinutes.IsChecked = true;
+                SetUpdateRadioButton();
             }
-            else if (updateCheckButtonName == "radioButton_EachHour")
-            {
-                radioButton_EachHour.IsChecked = true;
-            }
-            else
-            {
-                radioButton_OnLoad.IsChecked = true;
-            }
-            
-            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Equals("Revit"));
-            if(process == null)
-            {
-                CheckForUpdates();
-            }
-            else
-            {
-                textBox_Info.Clear();
-                textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
-            }
+        }
 
+        private string GetSettingsFilePath()
+        {
+            string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string fileName = "CitrusUpdaterSettings.xml";
+            return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
+        }
+
+        private void SetUpdateRadioButton()
+        {
+            switch (updateCheckButtonName)
+            {
+                case "radioButton_EachTenMinutes":
+                    radioButton_EachTenMinutes.IsChecked = true;
+                    break;
+                case "radioButton_EachHour":
+                    radioButton_EachHour.IsChecked = true;
+                    break;
+                default:
+                    radioButton_OnLoad.IsChecked = true;
+                    break;
+            }
+        }
+
+        private void StartUpdateTimer()
+        {
             timer = new Forms.Timer();
             if (updateCheckButtonName != null)
             {
-                if (updateCheckButtonName == "radioButton_EachTenMinutes")
+                switch (updateCheckButtonName)
                 {
-                    timer.Interval = 10 * 10 * 1000;
-                    timer.Tick += new EventHandler(Timer_Tick);
+                    case "radioButton_EachTenMinutes":
+                        timer.Interval = 10 * 60 * 1000; // 10 minutes
+                        break;
+                    case "radioButton_EachHour":
+                        timer.Interval = 60 * 60 * 1000; // 1 hour
+                        break;
                 }
-                else if (updateCheckButtonName == "radioButton_EachHour")
-                {
-                    timer.Interval = 60 * 60 * 1000;
-                    timer.Tick += new EventHandler(Timer_Tick);
-                }
+                timer.Tick += Timer_Tick;
+                timer.Start();
             }
-            timer.Start();
         }
+
         private void notifyIcon_TrayMouseDoubleClick(object sender, RoutedEventArgs e)
         {
-            // Показываем главное окно приложения
-            Rect trayRect = SystemParameters.WorkArea;
-            double left = trayRect.Right - this.Width;
-            double top = trayRect.Bottom - this.Height;
+            ShowMainWindow();
+        }
 
+        private void ShowMainWindow()
+        {
             this.Topmost = true;
-            this.Left = left;
-            this.Top = top;
-            this.Width = this.Width;
-            this.Height = this.Height;
+            this.Left = SystemParameters.WorkArea.Right - this.Width;
+            this.Top = SystemParameters.WorkArea.Bottom - this.Height;
             this.Show();
             this.WindowState = WindowState.Normal;
             this.Activate();
         }
+
         private void CitrusUpdaterWPF_Closed(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            // Скрываем главное окно приложения
             this.Hide();
-
-            // Отменяем закрытие приложения
             e.Cancel = true;
         }
+
         private void MenuItem_Open_Click(object sender, RoutedEventArgs e)
         {
-            // Показываем главное окно приложения
-            Rect trayRect = SystemParameters.WorkArea;
-            double left = trayRect.Right - this.Width;
-            double top = trayRect.Bottom - this.Height;
-
-            this.Topmost = true;
-            this.Left = left;
-            this.Top = top;
-            this.Width = this.Width;
-            this.Height = this.Height;
-
-            // Показываем главное окно приложения
-            this.Show();
-            this.WindowState = WindowState.Normal;
-            this.Activate();
+            ShowMainWindow();
         }
+
         private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
         {
-            // Закрываем приложение
             this.notifyIcon.Dispose();
-            this.Close();
             Application.Current.Shutdown();
         }
+
         private void RadioButtonUpdate_Checked(object sender, RoutedEventArgs e)
         {
-            updateCheckButtonName = (this.groupBox_UpdateCheck.Content as System.Windows.Controls.Grid)
+            updateCheckButtonName = (this.groupBox_UpdateCheck.Content as Grid)
                 .Children.OfType<RadioButton>()
-                .FirstOrDefault(rb => rb.IsChecked.Value == true)
-                .Name;
+                .FirstOrDefault(rb => rb.IsChecked.Value)?.Name;
 
-            string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string fileName = "CitrusUpdaterSettings.xml";
-            string assemblyPath = assemblyPathAll.Replace("CitrusUpdater.exe", fileName);
+            SaveSettings();
+            RestartUpdateTimer();
+        }
 
-            if (File.Exists(assemblyPath))
+        private void SaveSettings()
+        {
+            string settingsFilePath = GetSettingsFilePath();
+
+            if (File.Exists(settingsFilePath))
             {
-                File.Delete(assemblyPath);
+                File.Delete(settingsFilePath);
             }
 
-            using (FileStream fs = new FileStream(assemblyPath, FileMode.Create))
+            using (FileStream fs = new FileStream(settingsFilePath, FileMode.Create))
             {
                 XmlSerializer xSer = new XmlSerializer(typeof(string));
                 xSer.Serialize(fs, updateCheckButtonName);
-                fs.Close();
-            }
-
-            if(timer != null)
-            {
-                if (updateCheckButtonName == "radioButton_EachTenMinutes")
-                {
-                    timer.Stop();
-                    timer = new Forms.Timer();
-                    timer.Interval = 10 * 10 * 1000;
-                    timer.Tick += new EventHandler(Timer_Tick);
-                    timer.Start();
-                }
-                else if (updateCheckButtonName == "radioButton_EachHour")
-                {
-                    timer.Stop();
-                    timer = new Forms.Timer();
-                    timer.Interval = 60 * 60 * 1000;
-                    timer.Tick += new EventHandler(Timer_Tick);
-                    timer.Start();
-                }
-                else
-                {
-                    timer.Stop();
-                }
             }
         }
-        private void Timer_Tick(object sender, EventArgs e)
+
+        private void LoadLastSuccessfulChange()
         {
-            timer.Stop();
-            timer = new Forms.Timer();
-            Process process = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Equals("Revit"));
-            if (process == null)
+            string lastChangeFilePath = GetLastChangeFilePath();
+            if (File.Exists(lastChangeFilePath))
             {
-                CheckForUpdates();
+                lastSuccessfulChange = File.ReadAllText(lastChangeFilePath);
+                textBlock_LastChange.Text = $"Последнее изменение: {lastSuccessfulChange}";
             }
             else
             {
+                lastSuccessfulChange = "Неизвестно";
+                textBlock_LastChange.Text = "Последнее изменение: Неизвестно";
+            }
+        }
+
+        private void LoadChangeHistory()
+        {
+            string changeHistoryFilePath = GetChangeHistoryFilePath();
+            if (File.Exists(changeHistoryFilePath))
+            {
+                XmlDocument xmlDoc = new XmlDocument();
+                xmlDoc.Load(changeHistoryFilePath);
+                XmlNodeList changeNodes = xmlDoc.SelectNodes("/changelog/change");
+
                 textBox_Info.Clear();
-                textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
+                foreach (XmlNode changeNode in changeNodes)
+                {
+                    string number = changeNode.SelectSingleNode("number").InnerText;
+                    string description = changeNode.SelectSingleNode("description").InnerText;
+
+                    textBox_Info.AppendText($"Номер изменения: {number}{Environment.NewLine}");
+                    textBox_Info.AppendText($"{description}{Environment.NewLine}{Environment.NewLine}");
+                }
+
+                // Отображаем номер первого изменения
+                XmlNode firstChangeNode = xmlDoc.SelectSingleNode("/changelog/change[1]/number");
+                if (firstChangeNode != null)
+                {
+                    textBlock_LastChange.Text = $"Последнее изменение: {firstChangeNode.InnerText}";
+                    SaveLastSuccessfulChange(firstChangeNode.InnerText);
+                }
+            }
+        }
+
+        private string GetLastChangeFilePath()
+        {
+            string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string fileName = LastChangeFileName;
+            return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
+        }
+
+        private string GetChangeHistoryFilePath()
+        {
+            string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string fileName = ChangeHistoryFileName;
+            return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
+        }
+
+        private void SaveLastSuccessfulChange(string changeNumber)
+        {
+            string lastChangeFilePath = GetLastChangeFilePath();
+            File.WriteAllText(lastChangeFilePath, changeNumber);
+            lastSuccessfulChange = changeNumber;
+            textBlock_LastChange.Text = $"Последнее изменение: {changeNumber}";
+        }
+
+        private void SaveChangeHistory(string changeNumber, string description)
+        {
+            string changeHistoryFilePath = GetChangeHistoryFilePath();
+            XmlDocument xmlDoc = new XmlDocument();
+
+            if (File.Exists(changeHistoryFilePath))
+            {
+                xmlDoc.Load(changeHistoryFilePath);
+            }
+            else
+            {
+                XmlDeclaration xmlDeclaration = xmlDoc.CreateXmlDeclaration("1.0", "UTF-8", null);
+                XmlElement root = xmlDoc.CreateElement("changelog");
+                xmlDoc.AppendChild(root);
+                xmlDoc.InsertBefore(xmlDeclaration, root);
             }
 
-            if (updateCheckButtonName == "radioButton_EachTenMinutes")
+            XmlNode rootElement = xmlDoc.DocumentElement;
+            XmlElement changeElement = xmlDoc.CreateElement("change");
+
+            XmlElement numberElement = xmlDoc.CreateElement("number");
+            numberElement.InnerText = changeNumber;
+            changeElement.AppendChild(numberElement);
+
+            XmlElement descriptionElement = xmlDoc.CreateElement("description");
+            descriptionElement.InnerText = description;
+            changeElement.AppendChild(descriptionElement);
+
+            rootElement.AppendChild(changeElement);
+            xmlDoc.Save(changeHistoryFilePath);
+        }
+
+        private void RestartUpdateTimer()
+        {
+            timer?.Stop();
+            timer = new Forms.Timer();
+
+            switch (updateCheckButtonName)
             {
-                timer.Interval = 10 * 10 * 1000;
-                timer.Tick += new EventHandler(Timer_Tick);
+                case "radioButton_EachTenMinutes":
+                    timer.Interval = 10 * 60 * 1000;
+                    break;
+                case "radioButton_EachHour":
+                    timer.Interval = 60 * 60 * 1000;
+                    break;
+                default:
+                    return;
             }
-            else if (updateCheckButtonName == "radioButton_EachHour")
-            {
-                timer.Interval = 60 * 60 * 1000;
-                timer.Tick += new EventHandler(Timer_Tick);
-            }
+            timer.Tick += Timer_Tick;
             timer.Start();
         }
-        private async void CheckForUpdates()
+
+        private void Timer_Tick(object sender, EventArgs e)
         {
+            timer.Stop();
+            if (!IsRevitRunning())
+            {
+                _ = CheckForUpdates();
+            }
+            else
+            {
+                ShowRevitRunningMessage();
+            }
+            RestartUpdateTimer();
+        }
+
+        private bool IsRevitRunning()
+        {
+            return Process.GetProcesses().Any(p => p.ProcessName.Equals("Revit", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void ShowRevitRunningMessage()
+        {
+            Dispatcher.Invoke(() => {
+                textBox_Info.Clear();
+                textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
+            });
+        }
+
+        private async void Button_CheckUpdates_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsRevitRunning())
+            {
+                await CheckForUpdates();
+            }
+            else
+            {
+                ShowRevitRunningMessage();
+            }
+        }
+
+        private async Task CheckForUpdates()
+        {
+            progressBar.Value = 0;
+            progressBar.Visibility = Visibility.Visible;
+
             string addinsDataURLString = "http://citrusbim.com/addinsdata.xml";
 
-            if (CheckURL(addinsDataURLString))
+            if (await IsUrlAvailable(addinsDataURLString))
             {
-                //WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
-                //string fullUserName = currentIdentity.Name;
-                //string[] parts = fullUserName.Split('\\');
-                //string username = (parts.Length > 1) ? parts[1] : fullUserName;
-                string userProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                string[] pathComponents = userProfilePath.Split('\\');
-                string username = pathComponents[pathComponents.Length - 1];
-                //string username = Environment.UserName;
+                await ProcessUpdates(addinsDataURLString);
+            }
+            else
+            {
+                ShowServerConnectionError();
+            }
+
+            progressBar.Visibility = Visibility.Hidden;
+        }
+
+        private async Task<bool> IsUrlAvailable(string url)
+        {
+            try
+            {
+                WebRequest request = WebRequest.Create(url);
+                request.Method = "HEAD";
+                using (WebResponse response = await request.GetResponseAsync())
+                {
+                    return ((HttpWebResponse)response).StatusCode == HttpStatusCode.OK;
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowErrorMessage($"Ошибка при проверке доступности URL: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task ProcessUpdates(string addinsDataURLString)
+        {
+            try
+            {
                 XmlDocument addinsDataXML = new XmlDocument();
                 addinsDataXML.Load(addinsDataURLString);
 
@@ -289,110 +411,51 @@ namespace CitrusUpdater
                 XmlNode root = addinsDataXML.SelectSingleNode("addinsinfo/folder[@name='Addins']");
                 XmlNode filesForDel = addinsDataXML.SelectSingleNode("addinsinfo/foldersfordel[@name='ForDel']");
 
+                string username = GetUsername();
 
+                progressBar.Maximum = yearsList.Count;
                 foreach (string year in yearsList)
                 {
-                    if(!RunCreateFoldersVersions.ContainsKey(year) 
-                        || (RunCreateFoldersVersions.ContainsKey(year) && RunCreateFoldersVersions[year] == false))
+                    if (!RunCreateFoldersVersions.ContainsKey(year) || !RunCreateFoldersVersions[year])
                     {
                         await Task.Run(() => CreateFolders(root, year, username));
                     }
-                    
-                    if(!RunDownloadFilesVersions.ContainsKey(year) 
-                        || (RunDownloadFilesVersions.ContainsKey(year) && RunDownloadFilesVersions[year] == false))
+
+                    if (!RunDownloadFilesVersions.ContainsKey(year) || !RunDownloadFilesVersions[year])
                     {
                         await Task.Run(() => DownloadFiles(root, year, username));
                     }
+                    Dispatcher.Invoke(() => progressBar.Value++);
                 }
 
                 await Task.Run(() => DeleteFoldersAndFiles(filesForDel, username));
 
-                string changelogURLString = "http://citrusbim.com/changelog.xml";
-                if (CheckURL(changelogURLString))
-                {
-                    XmlDocument xmlDoc = new XmlDocument();
-                    xmlDoc.Load(changelogURLString);
-                    XmlNodeList changeList = xmlDoc.SelectNodes("/changelog/change");
-
-                    // Очищаем содержимое TextBox
-                    textBox_Info.Clear();
-
-                    // Перебираем элементы <change> и выводим информацию в TextBox
-                    foreach (XmlNode changeNode in changeList)
-                    {
-                        string number = changeNode.SelectSingleNode("number").InnerText;
-                        string description = changeNode.SelectSingleNode("description").InnerText;
-
-                        textBox_Info.AppendText("Номер изменения: " + number + Environment.NewLine);
-                        textBox_Info.AppendText(description + Environment.NewLine);
-                        textBox_Info.AppendText(Environment.NewLine);
-                    }
-                }
-                else
-                {
-                    textBox_Info.Clear();
-                    textBox_Info.AppendText("Отсутствует подключение к серверу!");
-                }
+                await DisplayChangeLog();
             }
-            else
+            catch (Exception ex)
             {
-                textBox_Info.Clear();
-                textBox_Info.AppendText("Отсутствует подключение к серверу!");
+                ShowErrorMessage($"Ошибка при обработке обновлений: {ex.Message}");
             }
         }
-        static List<string> GetYearsList(XmlNode yearsNode)
+
+        private string GetUsername()
         {
-            List<string> tmpYearsList = new List<string>();
-            if (yearsNode.HasChildNodes)
-            {
-                foreach (XmlNode child in yearsNode.ChildNodes)
-                {
-                    tmpYearsList.Add(child.Attributes["name"].Value);
-                }
-            }
-            return tmpYearsList;
+            string userProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string[] pathComponents = userProfilePath.Split(Path.DirectorySeparatorChar);
+            return pathComponents.Last();
         }
-        static bool CheckURL(string url)
+
+        private static List<string> GetYearsList(XmlNode yearsNode)
         {
-            WebRequest request = WebRequest.Create(url);
-            request.Method = "HEAD";
-
-            try
-            {
-                using (var response = request.GetResponse())
-                    return ((HttpWebResponse)response).StatusCode == HttpStatusCode.OK;
-            }
-            catch
-            {
-                return false;
-            }
+            return yearsNode.ChildNodes
+                            .Cast<XmlNode>()
+                            .Select(child => child.Attributes["name"].Value)
+                            .ToList();
         }
-        static DateTime GetLastModifiedDateTime(string uri)
-        {
-            WebRequest request = WebRequest.Create(uri);
-            request.Method = "HEAD";
 
-            using (WebResponse response = request.GetResponse())
-            {
-                string lastModifiedStr = response.Headers.Get("Last-Modified");
-
-                if (!string.IsNullOrEmpty(lastModifiedStr))
-                {
-                    return DateTime.Parse(lastModifiedStr).ToLocalTime();
-                }
-                else
-                {
-                    return DateTime.MinValue;
-                }
-            }
-        }
-        static void CreateFolders(XmlNode node, string year, string username)
+        private void CreateFolders(XmlNode node, string year, string username)
         {
             if (!RunCreateFoldersVersions.ContainsKey(year))
-            {
-                RunCreateFoldersVersions.Add(year,true);
-            }
-            else if (RunCreateFoldersVersions.ContainsKey(year))
             {
                 RunCreateFoldersVersions[year] = true;
             }
@@ -414,18 +477,17 @@ namespace CitrusUpdater
                     }
                 }
             }
+
             RunCreateFoldersVersions[year] = false;
         }
-        static void DownloadFiles(XmlNode node, string year, string username)
+
+        private void DownloadFiles(XmlNode node, string year, string username)
         {
             if (!RunDownloadFilesVersions.ContainsKey(year))
             {
-                RunDownloadFilesVersions.Add(year, true);
-            }
-            else if (RunDownloadFilesVersions.ContainsKey(year))
-            {
                 RunDownloadFilesVersions[year] = true;
             }
+
             if (node.HasChildNodes)
             {
                 foreach (XmlNode child in node.ChildNodes)
@@ -436,34 +498,41 @@ namespace CitrusUpdater
                         string fileType = child.Attributes["type"].Value;
                         string downloadUrl = child.Attributes["download_url"].Value.Replace("Year", year);
                         string targetPath = child.Attributes["target_path"].Value.Replace("Year", year).Replace("%username%", username);
-                        DateTime lastModifiedDateTime = GetLastModifiedDateTime(downloadUrl);
 
-                        if (!File.Exists(targetPath))
-                        {
-                            using (WebClient client = new WebClient())
-                            {
-                                client.DownloadFileAsync(new Uri(downloadUrl), targetPath);
-                            }
-                        }
-                        else if (File.Exists(targetPath))
-                        {
-                            DateTime createDateTime = new FileInfo(targetPath).CreationTime;
-                            DateTime changeDateTime = new FileInfo(targetPath).LastWriteTime;
-                            if (lastModifiedDateTime > createDateTime && lastModifiedDateTime > changeDateTime)
-                            {
-                                using (WebClient client = new WebClient())
-                                {
-                                    client.DownloadFileAsync(new Uri(downloadUrl), targetPath);
-                                }
-                            }
-                        }
+                        DownloadFileWithRetry(downloadUrl, targetPath);
                     }
                     DownloadFiles(child, year, username);
                 }
             }
+
             RunDownloadFilesVersions[year] = false;
         }
-        static void DeleteFoldersAndFiles(XmlNode node, string username)
+
+        private void DownloadFileWithRetry(string downloadUrl, string targetPath, int retryCount = 3)
+        {
+            for (int attempt = 0; attempt < retryCount; attempt++)
+            {
+                using (WebClient client = new WebClient())
+                {
+                    try
+                    {
+                        client.DownloadFile(downloadUrl, targetPath);
+
+                        // Verify file size
+                        if (new FileInfo(targetPath).Length > 0)
+                        {
+                            break; // Exit loop if download is successful and file is not empty
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ShowErrorMessage($"Ошибка при загрузке файла: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        private void DeleteFoldersAndFiles(XmlNode node, string username)
         {
             if (node.HasChildNodes)
             {
@@ -471,40 +540,80 @@ namespace CitrusUpdater
                 {
                     if (child.Name == "folder")
                     {
-                        string folderName = child.Attributes["name"].Value;
                         string targetPath = child.Attributes["target_path"].Value.Replace("%username%", username);
-
                         if (Directory.Exists(targetPath))
                         {
                             Directory.Delete(targetPath, true);
                         }
                     }
-
                     else if (child.Name == "file")
                     {
-                        string fileName = child.InnerText;
-                        string fileType = child.Attributes["type"].Value;
                         string targetPath = child.Attributes["target_path"].Value.Replace("%username%", username);
-
                         if (File.Exists(targetPath))
                         {
-                            try
-                            {
-                                File.Delete(targetPath);
-                            }
-                            catch
-                            {
-
-                            }
+                            File.Delete(targetPath);
                         }
                     }
                 }
             }
         }
+
+        private void ShowServerConnectionError()
+        {
+            Dispatcher.Invoke(() => {
+                textBox_Info.Clear();
+                textBox_Info.AppendText("Отсутствует подключение к серверу!");
+            });
+        }
+
+        private async Task DisplayChangeLog()
+        {
+            string changelogURLString = "http://citrusbim.com/changelog.xml";
+            if (await IsUrlAvailable(changelogURLString))
+            {
+                XmlDocument xmlDoc = new XmlDocument();
+                xmlDoc.Load(changelogURLString);
+                XmlNodeList changeList = xmlDoc.SelectNodes("/changelog/change");
+
+                Dispatcher.Invoke(() => {
+                    textBox_Info.Clear();
+
+                    foreach (XmlNode changeNode in changeList)
+                    {
+                        string number = changeNode.SelectSingleNode("number").InnerText;
+                        string description = changeNode.SelectSingleNode("description").InnerText;
+
+                        textBox_Info.AppendText($"Номер изменения: {number}{Environment.NewLine}");
+                        textBox_Info.AppendText($"{description}{Environment.NewLine}{Environment.NewLine}");
+
+                        // Save the last successful change number
+                        SaveChangeHistory(number, description);
+                    }
+
+                    // Save the first change number as the last successful change
+                    XmlNode firstChangeNode = xmlDoc.SelectSingleNode("/changelog/change[1]/number");
+                    if (firstChangeNode != null)
+                    {
+                        SaveLastSuccessfulChange(firstChangeNode.InnerText);
+                    }
+                });
+            }
+            else
+            {
+                ShowServerConnectionError();
+            }
+        }
+
         private void image_CitrusLogo_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            string url = "https://www.citrusbim.com/";
-            Process.Start(url);
+            Process.Start(new ProcessStartInfo("https://www.citrusbim.com/") { UseShellExecute = true });
+        }
+
+        private void ShowErrorMessage(string message)
+        {
+            Dispatcher.Invoke(() => {
+                textBox_Info.AppendText($"{message}{Environment.NewLine}");
+            });
         }
     }
 }

@@ -7,22 +7,30 @@
         xmlns:local="clr-namespace:CitrusUpdater"
         mc:Ignorable="d"
         Title="CITRUS Client" WindowStyle="SingleBorderWindow" ResizeMode="NoResize" Icon="Resources/citrus.ico"
-        Height="450" Width="250" MinHeight="450" MinWidth="250" MaxHeight="450" MaxWidth="250"
+        Height="500" Width="250" MinHeight="500" MinWidth="250" MaxHeight="500" MaxWidth="250"
         Loaded="CitrusUpdaterWPF_Loaded" Closing="CitrusUpdaterWPF_Closed">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="80"/>
+            <RowDefinition Height="30"/>
+            <!-- Row for the last successful change -->
             <RowDefinition Height="150"/>
             <RowDefinition Height="200*"/>
+            <RowDefinition Height="30"/>
+            <RowDefinition Height="10"/>
         </Grid.RowDefinitions>
+
         <Image x:Name="image_CitrusLogo" HorizontalAlignment="Center" Height="72" 
                VerticalAlignment="Center" Width="180" 
                Source="Resources/Citrus.png" Margin="0" 
                MouseLeftButtonUp="image_CitrusLogo_MouseLeftButtonUp" 
                RenderOptions.BitmapScalingMode="HighQuality" 
-               RenderOptions.EdgeMode="Aliased"/>
+               RenderOptions.EdgeMode="Aliased" Grid.Row="0"/>
 
-        <GroupBox x:Name="groupBox_UpdateCheck" Header="Проверять обновления:" Grid.Row="1" Margin="10,5" Grid.ColumnSpan="2" VerticalAlignment="Center">
+        <TextBlock x:Name="textBlock_LastChange" Text="Последнее изменение: Неизвестно" 
+                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,5" Grid.Row="1"/>
+
+        <GroupBox x:Name="groupBox_UpdateCheck" Header="Проверять обновления:" Grid.Row="2" Margin="10,5" Grid.ColumnSpan="2" VerticalAlignment="Center">
             <Grid Margin="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="107*"/>
@@ -39,7 +47,10 @@
             </Grid>
         </GroupBox>
 
-        <TextBox x:Name="textBox_Info" Margin="10,5,10,10" Grid.Row="2" TextWrapping="Wrap" IsReadOnly="True"/>
+        <TextBox x:Name="textBox_Info" Margin="10,0" Grid.Row="3" TextWrapping="Wrap" IsReadOnly="True"/>
+
+        <Button x:Name="button_CheckUpdates" Content="Проверить обновления" Grid.Row="4" Margin="10,0,10,5" VerticalAlignment="Bottom" Click="Button_CheckUpdates_Click"/>
+
+        <ProgressBar x:Name="progressBar" Grid.Row="5" Margin="5,0" Height="5" VerticalAlignment="Top"/>
     </Grid>
 </Window>
-    
