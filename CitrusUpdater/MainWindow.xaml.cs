@@ -10,9 +10,10 @@ using System.Xml.Serialization;
 using Forms = System.Windows.Forms;
 using System.Collections.Generic;
 using System.Xml;
-using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 
 namespace CitrusUpdater
 {
@@ -25,13 +26,15 @@ namespace CitrusUpdater
         private const string ChangeHistoryFileName = "changelog.xml";
         private const string LastChangeFileName = "LastChange.txt";
 
-        public static Dictionary<string, bool> RunCreateFoldersVersions;
-        public static Dictionary<string, bool> RunDownloadFilesVersions;
+        public static ConcurrentDictionary<string, bool> RunCreateFoldersVersions;
+        public static ConcurrentDictionary<string, bool> RunDownloadFilesVersions;
+
+        private static readonly HttpClient httpClient = new HttpClient();
 
         public MainWindow()
         {
-            RunCreateFoldersVersions = new Dictionary<string, bool>();
-            RunDownloadFilesVersions = new Dictionary<string, bool>();
+            RunCreateFoldersVersions = new ConcurrentDictionary<string, bool>();
+            RunDownloadFilesVersions = new ConcurrentDictionary<string, bool>();
             InitializeComponent();
         }
 
@@ -385,12 +388,8 @@ namespace CitrusUpdater
         {
             try
             {
-                WebRequest request = WebRequest.Create(url);
-                request.Method = "HEAD";
-                using (WebResponse response = await request.GetResponseAsync())
-                {
-                    return ((HttpWebResponse)response).StatusCode == HttpStatusCode.OK;
-                }
+                HttpResponseMessage response = await httpClient.GetAsync(url);
+                return response.IsSuccessStatusCode;
             }
             catch (Exception ex)
             {
@@ -488,6 +487,8 @@ namespace CitrusUpdater
                 RunDownloadFilesVersions[year] = true;
             }
 
+            List<Task> downloadTasks = new List<Task>();
+
             if (node.HasChildNodes)
             {
                 foreach (XmlNode child in node.ChildNodes)
@@ -499,36 +500,54 @@ namespace CitrusUpdater
                         string downloadUrl = child.Attributes["download_url"].Value.Replace("Year", year);
                         string targetPath = child.Attributes["target_path"].Value.Replace("Year", year).Replace("%username%", username);
 
-                        DownloadFileWithRetry(downloadUrl, targetPath);
+                        downloadTasks.Add(DownloadFileWithRetryAsync(downloadUrl, targetPath));
                     }
-                    DownloadFiles(child, year, username);
+                    else if (child.Name == "folder")
+                    {
+                        string folderName = child.Attributes["name"].Value;
+                        string targetPath = child.Attributes["target_path"].Value.Replace("Year", year).Replace("%username%", username);
+
+                        if (!Directory.Exists(targetPath))
+                        {
+                            Directory.CreateDirectory(targetPath);
+                        }
+                        DownloadFiles(child, year, username);
+                    }
                 }
             }
+
+            Task.WhenAll(downloadTasks).Wait();
 
             RunDownloadFilesVersions[year] = false;
         }
 
-        private void DownloadFileWithRetry(string downloadUrl, string targetPath, int retryCount = 3)
+        private async Task DownloadFileWithRetryAsync(string downloadUrl, string targetPath, int retryCount = 3)
         {
             for (int attempt = 0; attempt < retryCount; attempt++)
             {
-                using (WebClient client = new WebClient())
+                try
                 {
-                    try
-                    {
-                        client.DownloadFile(downloadUrl, targetPath);
+                    byte[] data = await httpClient.GetByteArrayAsync(downloadUrl);
+                    await WriteAllBytesAsync(targetPath, data);
 
-                        // Verify file size
-                        if (new FileInfo(targetPath).Length > 0)
-                        {
-                            break; // Exit loop if download is successful and file is not empty
-                        }
-                    }
-                    catch (Exception ex)
+                    // Verify file size
+                    if (new FileInfo(targetPath).Length > 0)
                     {
-                        ShowErrorMessage($"Ошибка при загрузке файла: {ex.Message}");
+                        break; // Exit loop if download is successful and file is not empty
                     }
                 }
+                catch (Exception ex)
+                {
+                    ShowErrorMessage($"Ошибка при загрузке файла: {ex.Message}");
+                }
+            }
+        }
+
+        private async Task WriteAllBytesAsync(string path, byte[] bytes)
+        {
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            {
+                await fs.WriteAsync(bytes, 0, bytes.Length);
             }
         }
 
