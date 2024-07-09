@@ -41,7 +41,7 @@
                     <RowDefinition Height="50*"/>
                     <RowDefinition Height="50*"/>
                 </Grid.RowDefinitions>
-                <RadioButton x:Name="radioButton_OnLoad" Content="При загрузке" HorizontalAlignment="Left" Margin="10,10,0,10" VerticalAlignment="Center" Checked="RadioButtonUpdate_Checked"/>
+                <RadioButton x:Name="radioButton_OnLoad" Content="При загрузке" HorizontalAlignment="Left" Margin="10,10,0,10" VerticalAlignment="Center" Checked="RadioButtonUpdate_Checked" IsChecked="True"/>
                 <RadioButton x:Name="radioButton_EachTenMinutes" Content="Каждые 10 минут" HorizontalAlignment="Left" Margin="10,11,0,11" VerticalAlignment="Center" Grid.Row="1" Checked="RadioButtonUpdate_Checked" Grid.ColumnSpan="2"/>
                 <RadioButton x:Name="radioButton_EachHour" Content="Каждый час" HorizontalAlignment="Left" Margin="10,11,0,11" VerticalAlignment="Center" Grid.Row="2" Checked="RadioButtonUpdate_Checked"/>
             </Grid>

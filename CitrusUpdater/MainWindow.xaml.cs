@@ -29,7 +29,18 @@ namespace CitrusUpdater
         public static ConcurrentDictionary<string, bool> RunCreateFoldersVersions;
         public static ConcurrentDictionary<string, bool> RunDownloadFilesVersions;
 
-        private static readonly HttpClient httpClient = new HttpClient();
+        private static readonly HttpClient httpClient;
+
+        static MainWindow()
+        {
+            httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30) // Настройте тайм-аут по вашему усмотрению
+            };
+
+            httpClient.DefaultRequestHeaders.Accept.Clear();
+            httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/xml"));
+        }
 
         public MainWindow()
         {
@@ -61,7 +72,6 @@ namespace CitrusUpdater
                 ShowRevitRunningMessage();
             }
         }
-
         private void ConfigureTrayIcon()
         {
             // Setup tray icon
@@ -84,7 +94,6 @@ namespace CitrusUpdater
             this.notifyIcon.ContextMenu = contextMenu;
             this.notifyIcon.TrayMouseDoubleClick += notifyIcon_TrayMouseDoubleClick;
         }
-
         private void HideMainWindow()
         {
             this.Topmost = true;
@@ -92,7 +101,6 @@ namespace CitrusUpdater
             this.Top = SystemParameters.WorkArea.Bottom - this.Height;
             this.Hide();
         }
-
         private void LoadSettings()
         {
             string settingsFilePath = GetSettingsFilePath();
@@ -107,14 +115,12 @@ namespace CitrusUpdater
                 SetUpdateRadioButton();
             }
         }
-
         private string GetSettingsFilePath()
         {
             string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
             string fileName = "CitrusUpdaterSettings.xml";
             return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
         }
-
         private void SetUpdateRadioButton()
         {
             switch (updateCheckButtonName)
@@ -130,7 +136,6 @@ namespace CitrusUpdater
                     break;
             }
         }
-
         private void StartUpdateTimer()
         {
             timer = new Forms.Timer();
@@ -149,12 +154,10 @@ namespace CitrusUpdater
                 timer.Start();
             }
         }
-
         private void notifyIcon_TrayMouseDoubleClick(object sender, RoutedEventArgs e)
         {
             ShowMainWindow();
         }
-
         private void ShowMainWindow()
         {
             this.Topmost = true;
@@ -164,24 +167,20 @@ namespace CitrusUpdater
             this.WindowState = WindowState.Normal;
             this.Activate();
         }
-
         private void CitrusUpdaterWPF_Closed(object sender, System.ComponentModel.CancelEventArgs e)
         {
             this.Hide();
             e.Cancel = true;
         }
-
         private void MenuItem_Open_Click(object sender, RoutedEventArgs e)
         {
             ShowMainWindow();
         }
-
         private void MenuItem_Exit_Click(object sender, RoutedEventArgs e)
         {
             this.notifyIcon.Dispose();
             Application.Current.Shutdown();
         }
-
         private void RadioButtonUpdate_Checked(object sender, RoutedEventArgs e)
         {
             updateCheckButtonName = (this.groupBox_UpdateCheck.Content as Grid)
@@ -191,7 +190,6 @@ namespace CitrusUpdater
             SaveSettings();
             RestartUpdateTimer();
         }
-
         private void SaveSettings()
         {
             string settingsFilePath = GetSettingsFilePath();
@@ -207,7 +205,6 @@ namespace CitrusUpdater
                 xSer.Serialize(fs, updateCheckButtonName);
             }
         }
-
         private void LoadLastSuccessfulChange()
         {
             string lastChangeFilePath = GetLastChangeFilePath();
@@ -222,7 +219,6 @@ namespace CitrusUpdater
                 textBlock_LastChange.Text = "Последнее изменение: Неизвестно";
             }
         }
-
         private void LoadChangeHistory()
         {
             string changeHistoryFilePath = GetChangeHistoryFilePath();
@@ -251,21 +247,18 @@ namespace CitrusUpdater
                 }
             }
         }
-
         private string GetLastChangeFilePath()
         {
             string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
             string fileName = LastChangeFileName;
             return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
         }
-
         private string GetChangeHistoryFilePath()
         {
             string assemblyPathAll = System.Reflection.Assembly.GetExecutingAssembly().Location;
             string fileName = ChangeHistoryFileName;
             return Path.Combine(Path.GetDirectoryName(assemblyPathAll), fileName);
         }
-
         private void SaveLastSuccessfulChange(string changeNumber)
         {
             string lastChangeFilePath = GetLastChangeFilePath();
@@ -273,7 +266,6 @@ namespace CitrusUpdater
             lastSuccessfulChange = changeNumber;
             textBlock_LastChange.Text = $"Последнее изменение: {changeNumber}";
         }
-
         private void SaveChangeHistory(string changeNumber, string description)
         {
             string changeHistoryFilePath = GetChangeHistoryFilePath();
@@ -305,7 +297,6 @@ namespace CitrusUpdater
             rootElement.AppendChild(changeElement);
             xmlDoc.Save(changeHistoryFilePath);
         }
-
         private void RestartUpdateTimer()
         {
             timer?.Stop();
@@ -325,7 +316,6 @@ namespace CitrusUpdater
             timer.Tick += Timer_Tick;
             timer.Start();
         }
-
         private void Timer_Tick(object sender, EventArgs e)
         {
             timer.Stop();
@@ -339,12 +329,10 @@ namespace CitrusUpdater
             }
             RestartUpdateTimer();
         }
-
         private bool IsRevitRunning()
         {
             return Process.GetProcesses().Any(p => p.ProcessName.Equals("Revit", StringComparison.OrdinalIgnoreCase));
         }
-
         private void ShowRevitRunningMessage()
         {
             Dispatcher.Invoke(() => {
@@ -352,7 +340,6 @@ namespace CitrusUpdater
                 textBox_Info.AppendText("Закройте Revit перед проверкой обновлений!");
             });
         }
-
         private async void Button_CheckUpdates_Click(object sender, RoutedEventArgs e)
         {
             if (!IsRevitRunning())
@@ -364,7 +351,6 @@ namespace CitrusUpdater
                 ShowRevitRunningMessage();
             }
         }
-
         private async Task CheckForUpdates()
         {
             progressBar.Value = 0;
@@ -383,27 +369,53 @@ namespace CitrusUpdater
 
             progressBar.Visibility = Visibility.Hidden;
         }
-
         private async Task<bool> IsUrlAvailable(string url)
         {
             try
             {
                 HttpResponseMessage response = await httpClient.GetAsync(url);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+                else
+                {
+                    ShowErrorMessage($"Ошибка доступа к серверу: {response.StatusCode}");
+                    return false;
+                }
+            }
+            catch (HttpRequestException httpRequestException)
+            {
+                ShowErrorMessage($"Ошибка запроса: {httpRequestException.Message}");
+                return false;
+            }
+            catch (TaskCanceledException taskCanceledException) when (!taskCanceledException.CancellationToken.IsCancellationRequested)
+            {
+                ShowErrorMessage($"Тайм-аут запроса: {taskCanceledException.Message}");
+                return false;
+            }
+            catch (TimeoutException timeoutException)
+            {
+                ShowErrorMessage($"Превышен тайм-аут запроса: {timeoutException.Message}");
+                return false;
             }
             catch (Exception ex)
             {
-                ShowErrorMessage($"Ошибка при проверке доступности URL: {ex.Message}");
+                ShowErrorMessage($"Неизвестная ошибка: {ex.Message}");
                 return false;
             }
         }
-
         private async Task ProcessUpdates(string addinsDataURLString)
         {
             try
             {
                 XmlDocument addinsDataXML = new XmlDocument();
-                addinsDataXML.Load(addinsDataURLString);
+                using (HttpResponseMessage response = await httpClient.GetAsync(addinsDataURLString))
+                {
+                    response.EnsureSuccessStatusCode();
+                    string xmlContent = await response.Content.ReadAsStringAsync();
+                    addinsDataXML.LoadXml(xmlContent);
+                }
 
                 XmlNode yearsNode = addinsDataXML.SelectSingleNode("addinsinfo/years[@name='Yars']");
                 List<string> yearsList = GetYearsList(yearsNode);
@@ -431,19 +443,21 @@ namespace CitrusUpdater
 
                 await DisplayChangeLog();
             }
+            catch (HttpRequestException httpRequestException)
+            {
+                ShowErrorMessage($"Ошибка при обработке обновлений: {httpRequestException.Message}");
+            }
             catch (Exception ex)
             {
-                ShowErrorMessage($"Ошибка при обработке обновлений: {ex.Message}");
+                ShowErrorMessage($"Неизвестная ошибка при обработке обновлений: {ex.Message}");
             }
         }
-
         private string GetUsername()
         {
             string userProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             string[] pathComponents = userProfilePath.Split(Path.DirectorySeparatorChar);
             return pathComponents.Last();
         }
-
         private static List<string> GetYearsList(XmlNode yearsNode)
         {
             return yearsNode.ChildNodes
@@ -451,7 +465,6 @@ namespace CitrusUpdater
                             .Select(child => child.Attributes["name"].Value)
                             .ToList();
         }
-
         private void CreateFolders(XmlNode node, string year, string username)
         {
             if (!RunCreateFoldersVersions.ContainsKey(year))
@@ -479,7 +492,6 @@ namespace CitrusUpdater
 
             RunCreateFoldersVersions[year] = false;
         }
-
         private void DownloadFiles(XmlNode node, string year, string username)
         {
             if (!RunDownloadFilesVersions.ContainsKey(year))
@@ -520,7 +532,6 @@ namespace CitrusUpdater
 
             RunDownloadFilesVersions[year] = false;
         }
-
         private async Task DownloadFileWithRetryAsync(string downloadUrl, string targetPath, int retryCount = 3)
         {
             for (int attempt = 0; attempt < retryCount; attempt++)
@@ -536,21 +547,30 @@ namespace CitrusUpdater
                         break; // Exit loop if download is successful and file is not empty
                     }
                 }
+                catch (HttpRequestException httpRequestException)
+                {
+                    ShowErrorMessage($"Ошибка при загрузке файла (попытка {attempt + 1} из {retryCount}): {httpRequestException.Message}");
+                }
                 catch (Exception ex)
                 {
-                    ShowErrorMessage($"Ошибка при загрузке файла: {ex.Message}");
+                    ShowErrorMessage($"Ошибка при загрузке файла (попытка {attempt + 1} из {retryCount}): {ex.Message}");
                 }
             }
         }
-
         private async Task WriteAllBytesAsync(string path, byte[] bytes)
         {
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            try
             {
-                await fs.WriteAsync(bytes, 0, bytes.Length);
+                using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+                {
+                    await fs.WriteAsync(bytes, 0, bytes.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() => textBox_Info.AppendText($"Ошибка при записи файла {path}: {ex.Message}{Environment.NewLine}"));
             }
         }
-
         private void DeleteFoldersAndFiles(XmlNode node, string username)
         {
             if (node.HasChildNodes)
@@ -576,7 +596,6 @@ namespace CitrusUpdater
                 }
             }
         }
-
         private void ShowServerConnectionError()
         {
             Dispatcher.Invoke(() => {
@@ -584,14 +603,18 @@ namespace CitrusUpdater
                 textBox_Info.AppendText("Отсутствует подключение к серверу!");
             });
         }
-
         private async Task DisplayChangeLog()
         {
             string changelogURLString = "http://citrusbim.com/changelog.xml";
             if (await IsUrlAvailable(changelogURLString))
             {
                 XmlDocument xmlDoc = new XmlDocument();
-                xmlDoc.Load(changelogURLString);
+                using (HttpResponseMessage response = await httpClient.GetAsync(changelogURLString))
+                {
+                    response.EnsureSuccessStatusCode();
+                    string xmlContent = await response.Content.ReadAsStringAsync();
+                    xmlDoc.LoadXml(xmlContent);
+                }
                 XmlNodeList changeList = xmlDoc.SelectNodes("/changelog/change");
 
                 Dispatcher.Invoke(() => {
@@ -622,12 +645,10 @@ namespace CitrusUpdater
                 ShowServerConnectionError();
             }
         }
-
         private void image_CitrusLogo_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             Process.Start(new ProcessStartInfo("https://www.citrusbim.com/") { UseShellExecute = true });
         }
-
         private void ShowErrorMessage(string message)
         {
             Dispatcher.Invoke(() => {
@@ -635,4 +656,5 @@ namespace CitrusUpdater
             });
         }
     }
+
 }
