@@ -102,7 +102,7 @@ namespace CitrusUpdater
             this.Hide();
         }
         private void LoadSettings()
-        {
+        { 
             string settingsFilePath = GetSettingsFilePath();
             if (File.Exists(settingsFilePath))
             {
